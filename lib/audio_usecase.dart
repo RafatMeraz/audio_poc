@@ -138,72 +138,98 @@ import 'package:flutter/cupertino.dart';
 //   }
 // }
 class AudioCaptureUseCase {
-  StreamSubscription? _audioSubscriber;
-  final SystemAudioCapture _audioCapture = SystemAudioCapture();
+  // Capture Instances
+  final SystemAudioCapture _systemCapture = SystemAudioCapture();
+  final MicAudioCapture _micCapture = MicAudioCapture();
 
-  // Define file paths
-  final String _rawPath = "teams_recording.raw";
-  final String _wavPath = "teams_recording.wav";
+  // Subscriptions
+  StreamSubscription? _systemSubscriber;
+  StreamSubscription? _micSubscriber;
 
-  IOSink? _sink;
+  // File Paths
+  final String _systemRawPath = "system_audio.raw";
+  final String _micRawPath = "mic_audio.raw";
 
-  /// Request recording permission
-  Future<bool> requestRecordingPermission() async {
+  // Sinks
+  IOSink? _systemSink;
+  IOSink? _micSink;
+
+  /// Request recording permission for both
+  Future<bool> requestRecordingPermissions() async {
     try {
-      return _audioCapture.requestPermissions();
+      final systemOk = await _systemCapture.requestPermissions();
+      final micOk = await _micCapture.requestPermissions();
+      return systemOk && micOk;
     } catch (e) {
       debugPrint("Error requesting recording permission: $e");
       return false;
     }
   }
 
-  Future<void> captureAudio() async {
-    // Delete old raw file if it exists to start fresh
-    final rawFile = File(_rawPath);
+  /// METHOD 1: Capture System Audio only
+  Future<void> captureSystemAudio() async {
+    final rawFile = File(_systemRawPath);
     if (await rawFile.exists()) await rawFile.delete();
 
-    _sink = rawFile.openWrite();
-    await _audioCapture.startCapture();
+    _systemSink = rawFile.openWrite();
+    await _systemCapture.startCapture();
 
-    _audioSubscriber = _audioCapture.audioStream?.listen((audioData) {
-      _sink?.add(audioData);
+    _systemSubscriber = _systemCapture.audioStream?.listen((audioData) {
+      _systemSink?.add(audioData);
     });
   }
 
-  Future<void> stopCapture() async {
-    await _audioSubscriber?.cancel();
-    _audioSubscriber = null;
+  /// METHOD 2: Capture Mic Audio only
+  Future<void> captureMicAudio() async {
+    final rawFile = File(_micRawPath);
+    if (await rawFile.exists()) await rawFile.delete();
 
-    // 1. Close the sink and wait for it to finish flushing to disk
-    await _sink?.flush();
-    await _sink?.close();
-    _sink = null;
+    _micSink = rawFile.openWrite();
+    await _micCapture.startCapture();
 
-    // 2. Stop the hardware capture
-    await _audioCapture.stopCapture();
-
-    // 3. Convert the resulting raw file to WAV
-    await _saveToWav();
+    _micSubscriber = _micCapture.audioStream?.listen((audioData) {
+      print(audioData);
+      _micSink?.add(audioData);
+    });
   }
 
-  Future<void> _saveToWav() async {
-    final rawFile = File(_rawPath);
+  /// Stop all captures and clean up
+  Future<void> stopAllCaptures() async {
+    // Stop System
+    await _systemSubscriber?.cancel();
+    await _systemSink?.flush();
+    await _systemSink?.close();
+    await _systemCapture.stopCapture();
+
+    // Stop Mic
+    await _micSubscriber?.cancel();
+    await _micSink?.flush();
+    await _micSink?.close();
+    await _micCapture.stopCapture();
+
+    _systemSubscriber = null;
+    _micSubscriber = null;
+    _systemSink = null;
+    _micSink = null;
+
+    // Convert both to WAV if files exist
+    await _saveToWav(_systemRawPath, "system_audio.wav");
+    await _saveToWav(_micRawPath, "mic_audio.wav");
+  }
+
+  Future<void> _saveToWav(String rawPath, String wavPath) async {
+    final rawFile = File(rawPath);
     if (!await rawFile.exists()) return;
 
     final bytes = await rawFile.readAsBytes();
-    final wavFile = File(_wavPath);
+    final wavFile = File(wavPath);
 
-    // Create the header based on the actual recorded data length
     final header = createWavHeader(bytes.length);
 
-    // Write Header + Raw Data
     await wavFile.writeAsBytes(header);
     await wavFile.writeAsBytes(bytes, mode: FileMode.append);
 
-    print("File saved successfully to: $_wavPath");
-
-    // Optional: Delete the raw file to save space
-    // await rawFile.delete();
+    print("Saved: $wavPath");
   }
 
   List<int> createWavHeader(int dataLength) {

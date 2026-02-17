@@ -25,27 +25,40 @@ class _HomeScreenState extends State<HomeScreen> {
                 IconButton(
                   onPressed: () async {
                     final isPermissionGranted = await audioCaptureUseCase
-                        .requestMicrophonePermission();
+                        .requestRecordingPermissions();
                     if (!isPermissionGranted) {
                       print("Permission Not Granted");
                       return;
                     }
-                    final isRecordingPermissionGranted =
-                        await audioCaptureUseCase.requestRecordingPermission();
-                    if (!isRecordingPermissionGranted) {
-                      print("Recording Permission Not Granted");
-                      return;
-                    }
 
-                    audioCaptureUseCase.startRecording();
+                    audioCaptureUseCase.captureSystemAudio();
                   },
                   icon: Icon(Icons.speaker),
                 ),
                 IconButton(
-                  onPressed: audioCaptureUseCase.stopRecording,
+                  onPressed: audioCaptureUseCase.stopAllCaptures,
                   icon: Icon(Icons.speaker_group),
                 ),
-                IconButton(onPressed: () {}, icon: Icon(Icons.mic)),
+                IconButton(
+                  onPressed: () async {
+                    final isPermissionGranted = await audioCaptureUseCase
+                        .requestRecordingPermissions();
+                    if (!isPermissionGranted) {
+                      print("Permission Not Granted");
+                      return;
+                    }
+
+                    audioCaptureUseCase.captureMicAudio();
+                  },
+                  icon: Icon(Icons.mic),
+                ),
+
+                IconButton(
+                  onPressed: () {
+                    audioCaptureUseCase.stopAllCaptures();
+                  },
+                  icon: Icon(Icons.mic_off),
+                ),
               ],
             ),
           ],
